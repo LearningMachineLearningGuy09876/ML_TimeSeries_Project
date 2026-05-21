@@ -1,110 +1,76 @@
-# Plantilla de Proyecto de Ciencia de Datos
+# Pronóstico de Series Temporales — Ventas con ARIMA
 
-Esta plantilla está diseñada para impulsar proyectos de ciencia de datos proporcionando una configuración básica para conexiones de base de datos, procesamiento de datos, y desarrollo de modelos de aprendizaje automático. Incluye una organización estructurada de carpetas para tus conjuntos de datos y un conjunto de paquetes de Python predefinidos necesarios para la mayoría de las tareas de ciencia de datos.
+> Pipeline de análisis de series temporales de extremo a extremo sobre un dataset de ventas: prueba de estacionariedad con el test Dickey-Fuller Aumentado, descomposición estacional, análisis de autocorrelación y un pronóstico de 60 pasos con `auto_arima` — cubriendo el flujo diagnóstico completo que precede a cualquier modelo de series temporales.
 
-## Estructura
+---
 
-El proyecto está organizado de la siguiente manera:
+## Problema
 
-- **`src/app.py`** → Script principal de Python donde correrá tu proyecto.
-- **`src/explore.ipynb`** → Notebook para exploración y pruebas. Una vez finalizada la exploración, migra el código limpio a `app.py`.
-- **`src/utils.py`** → Funciones auxiliares, como conexión a bases de datos.
-- **`requirements.txt`** → Lista de paquetes de Python necesarios.
-- **`models/`** → Contendrá tus clases de modelos SQLAlchemy.
-- **`data/`** → Almacena los datasets en diferentes etapas:
-  - **`data/raw/`** → Datos sin procesar.
-  - **`data/interim/`** → Datos transformados temporalmente.
-  - **`data/processed/`** → Datos listos para análisis.
+Pronosticar valores futuros de ventas a partir de una serie temporal histórica. Los datos de series temporales rompen un supuesto fundamental de la mayoría de los modelos de ML — que las observaciones son independientes. Las ventas en el tiempo *t* están correlacionadas con las ventas en *t-1*, *t-2*, etc. ARIMA modela esta autocorrelación explícitamente y la usa para hacer pronósticos.
 
+## Dataset
 
-## ⚡ Configuración Inicial en Codespaces (Recomendado)
+- **Fuente:** Dataset de ventas (4Geeks / breathecode)
+- **Estructura:** Serie temporal de cifras de ventas indexada por fecha
+- **Variable objetivo:** `sales` — una única serie univariada establecida como índice del DataFrame tras el parseo con `pd.to_datetime()`
 
-No es necesario realizar ninguna configuración manual, ya que **Codespaces se configura automáticamente** con los archivos predefinidos que ha creado la academia para ti. Simplemente sigue estos pasos:
+## Pipeline de Análisis
 
-1. **Espera a que el entorno se configure automáticamente**.
-   - Todos los paquetes necesarios y la base de datos se instalarán por sí mismos.
-   - El `username` y `db_name` creados automáticamente están en el archivo **`.env`** en la raíz del proyecto.
-2. **Una vez que Codespaces esté listo, puedes comenzar a trabajar inmediatamente**.
+| Paso | Herramienta | Hallazgo |
+|---|---|---|
+| Inspección visual | `sns.lineplot` | Tendencia alcista clara; la serie no revierte a una media |
+| Descomposición estacional | `seasonal_decompose` | Tendencia confirmada; **no se encontró componente estacional significativo** |
+| Prueba de estacionariedad | Test ADF (`adfuller`) | p-valor = **0,98** — no se rechaza H₀ → serie **no estacionaria** |
+| Autocorrelación | `plot_acf` | Alta autocorrelación en todo el rango, disminuyendo lentamente con el retardo |
+| Selección de modelo | `auto_arima` (pmdarima) | Búsqueda automática en el espacio (p, d, q); seasonal=False, m=7 |
+| Pronóstico | `model.predict(60)` | Pronóstico de 60 pasos graficado frente a los datos históricos |
 
+## Diagnósticos Clave
 
-## 💻 Configuración en Local (Solo si no puedes usar Codespaces)
+**Test ADF (Dickey-Fuller Aumentado):**
+- H₀: la serie tiene una raíz unitaria (es no estacionaria)
+- p-valor = 0,98 >> 0,05 → no se rechaza H₀ → **no estacionariedad confirmada**
+- Esto significa que la serie no tiene una media estable a la que revertir — debe diferenciarse antes de ajustar un ARIMA estándar
 
-**Prerrequisitos**
+**Descomposición estacional:**
+- Componente de tendencia: pendiente alcista fuerte y persistente
+- Componente estacional: plano — no hay patrón estacional repetitivo en este dataset
+- Componente residual: ruido aleatorio restante tras eliminar la tendencia
 
-Asegúrate de tener Python 3.11+ instalado en tu máquina. También necesitarás pip para instalar los paquetes de Python.
+**Gráfico ACF:**
+- Alta autocorrelación positiva en todos los retardos, disminuyendo gradualmente
+- Característico de una serie no estacionaria con memoria fuerte — coherente con el resultado del test ADF
 
-**Instalación**
+**auto_arima:**
+- Busca automáticamente combinaciones ARIMA(p, d, q) mediante minimización del AIC
+- El orden de diferenciación `d` se determina de forma basada en datos a partir de pruebas de estacionariedad
+- Selecciona el modelo más parsimonioso que ajusta la estructura de autocorrelación
 
-Clona el repositorio del proyecto en tu máquina local.
+## Conclusiones Clave
 
-Navega hasta el directorio del proyecto e instala los paquetes de Python requeridos:
+- **La estacionariedad es un requisito previo, no un supuesto a omitir:** ARIMA requiere que la serie sea estacionaria (media y varianza constantes). Un p-valor de 0,98 en el test ADF hace inconfundible la no estacionariedad — la diferenciación es obligatoria antes de ajustar.
+- **La descomposición estacional es diagnóstica, no solo visual:** Descomponer la serie confirma que la deriva alcista es una tendencia, no un comportamiento cíclico — descartando ARIMA estacional (SARIMA) y simplificando el espacio de selección de modelos.
+- **auto_arima realiza la búsqueda en cuadrícula que de otro modo sería manual:** Elegir (p, d, q) a mano requiere inspeccionar los gráficos ACF y PACF e iterar. `auto_arima` automatiza esto sistemáticamente usando criterios de información, siguiendo la misma lógica pero más rápido.
+
+## Stack Tecnológico
+
+`Python` · `statsmodels` · `pmdarima` · `pandas` · `Matplotlib` · `Seaborn`
+
+## Ejecutar Localmente
 
 ```bash
+git clone https://github.com/matthewkane-ml/ML_TimeSeries_MTK.git
+cd ML_TimeSeries_MTK
 pip install -r requirements.txt
+jupyter notebook src/TimeSeries.ipynb
 ```
 
-**Crear una base de datos (si es necesario)**
+## Próximos Pasos
 
-Crea una nueva base de datos dentro del motor Postgres personalizando y ejecutando el siguiente comando: 
+- Evaluar la precisión del pronóstico con datos de prueba reservados usando **MAE** y **RMSE** — un pronóstico visual de 60 pasos es convincente, pero el error cuantificado sobre datos no vistos es lo que lo hace creíble
+- Aplicar **transformación logarítmica** antes de diferenciar para estabilizar la varianza de la serie con tendencia alcista
+- Comparar con un modelo **Facebook Prophet** — Prophet gestiona automáticamente los cambios de tendencia y festivos, y a menudo supera a ARIMA en datos de ventas empresariales con patrones irregulares
 
-```bash
-$ psql -U postgres -c "DO \$\$ BEGIN 
-    CREATE USER mi_usuario WITH PASSWORD 'mi_contraseña'; 
-    CREATE DATABASE mi_base_de_datos OWNER mi_usuario; 
-END \$\$;"
-```
-Conéctate al motor Postgres para usar tu base de datos, manipular tablas y datos: 
+---
 
-```bash
-$ psql -U mi_usuario -d mi_base_de_datos
-```
-
-¡Una vez que estés dentro de PSQL podrás crear tablas, hacer consultas, insertar, actualizar o eliminar datos y mucho más!
-
-**Variables de entorno**
-
-Crea un archivo .env en el directorio raíz del proyecto para almacenar tus variables de entorno, como tu cadena de conexión a la base de datos:
-
-```makefile
-DATABASE_URL="postgresql://<USUARIO>:<CONTRASEÑA>@<HOST>:<PUERTO>/<NOMBRE_BD>"
-
-#example
-DATABASE_URL="postgresql://mi_usuario:mi_contraseña@localhost:5432/mi_base_de_datos"
-```
-
-## Ejecutando la Aplicación
-
-Para ejecutar la aplicación, ejecuta el script app.py desde la raíz del directorio del proyecto:
-
-```bash
-python src/app.py
-```
-
-## Añadiendo Modelos
-
-Para añadir clases de modelos SQLAlchemy, crea nuevos archivos de script de Python dentro del directorio models/. Estas clases deben ser definidas de acuerdo a tu esquema de base de datos.
-
-Definición del modelo de ejemplo (`models/example_model.py`):
-
-```py
-from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy import String
-from sqlalchemy.orm import Mapped, mapped_column
-
-Base = declarative_base()
-
-class ExampleModel(Base):
-    __tablename__ = 'example_table'
-    id: Mapped[int] = mapped_column(primary_key=True)
-    username: Mapped[str] = mapped_column(unique=True)
-```
-
-## Trabajando con Datos
-
-Puedes colocar tus conjuntos de datos brutos en el directorio data/raw, conjuntos de datos intermedios en data/interim, y los conjuntos de datos procesados listos para el análisis en data/processed.
-
-Para procesar datos, puedes modificar el script app.py para incluir tus pasos de procesamiento de datos, utilizando pandas para la manipulación y análisis de datos.
-
-## Contribuyentes
-
-Este proyecto es mantenido por [matthewkane-ml](https://github.com/matthewkane-ml).
+**Autor:** Matthew Kane — [LinkedIn](https://www.linkedin.com/in/thomas-k-392094410/) · [Portafolio GitHub](https://github.com/matthewkane-ml)

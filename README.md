@@ -1,110 +1,76 @@
-# Data Science Project Boilerplate
+# Time Series Forecasting — Sales with ARIMA
 
-This boilerplate is designed to kickstart data science projects by providing a basic setup for database connections, data processing, and machine learning model development. It includes a structured folder organization for your datasets and a set of pre-defined Python packages necessary for most data science tasks.
+> End-to-end time series analysis pipeline on a sales dataset: stationarity testing with the Augmented Dickey-Fuller test, seasonal decomposition, autocorrelation analysis, and a 60-step ahead forecast using `auto_arima` — covering the full diagnostic-to-forecast workflow that precedes any time series model.
 
-## Structure
+---
 
-The project is organized as follows:
+## Problem
 
-- **`src/app.py`** → Main Python script where your project will run.
-- **`src/explore.ipynb`** → Notebook for exploration and testing. Once exploration is complete, migrate the clean code to `app.py`.
-- **`src/utils.py`** → Auxiliary functions, such as database connection.
-- **`requirements.txt`** → List of required Python packages.
-- **`models/`** → Will contain your SQLAlchemy model classes.
-- **`data/`** → Stores datasets at different stages:
-  - **`data/raw/`** → Raw data.
-  - **`data/interim/`** → Temporarily transformed data.
-  - **`data/processed/`** → Data ready for analysis.
+Forecast future sales values from a historical time series. Time series data breaks a core assumption of most ML models — that observations are independent. Sales at time *t* are correlated with sales at *t-1*, *t-2*, and so on. ARIMA models this autocorrelation explicitly and uses it to make forecasts.
 
+## Dataset
 
-## ⚡ Initial Setup in Codespaces (Recommended)
+- **Source:** Sales dataset (4Geeks / breathecode)
+- **Structure:** Date-indexed time series of sales figures
+- **Target:** `sales` — a single univariate series set as the DataFrame index after `pd.to_datetime()` parsing
 
-No manual setup is required, as **Codespaces is automatically configured** with the predefined files created by the academy for you. Just follow these steps:
+## Analysis Pipeline
 
-1. **Wait for the environment to configure automatically**.
-   - All necessary packages and the database will install themselves.
-   - The automatically created `username` and `db_name` are in the **`.env`** file at the root of the project.
-2. **Once Codespaces is ready, you can start working immediately**.
+| Step | Tool | Finding |
+|---|---|---|
+| Visual inspection | `sns.lineplot` | Clear upward trend; series does not revert to a mean |
+| Seasonal decomposition | `seasonal_decompose` | Trend confirmed; **no meaningful seasonal component** found |
+| Stationarity test | ADF test (`adfuller`) | p-value = **0.98** — fail to reject H₀ → series is **non-stationary** |
+| Autocorrelation | `plot_acf` | High autocorrelation throughout, slowly declining with lag |
+| Model selection | `auto_arima` (pmdarima) | Searches (p, d, q) space automatically; seasonal=False, m=7 |
+| Forecast | `model.predict(60)` | 60-step ahead forecast plotted against historical data |
 
+## Key Diagnostics
 
-## 💻 Local Setup (Only if you can't use Codespaces)
+**ADF Test (Augmented Dickey-Fuller):**
+- H₀: the series has a unit root (is non-stationary)
+- p-value = 0.98 >> 0.05 → fail to reject H₀ → **non-stationary confirmed**
+- This means the series has no stable mean to revert to — it must be differenced before fitting a standard ARIMA
 
-**Prerequisites**
+**Seasonal decomposition:**
+- Trend component: strong, persistent upward slope
+- Seasonal component: flat — no repeating seasonal pattern in this dataset
+- Residual component: random noise remaining after removing trend
 
-Make sure you have Python 3.11+ installed on your machine. You will also need pip to install the Python packages.
+**ACF plot:**
+- High positive autocorrelation at all lags, gradually decreasing
+- Characteristic of a non-stationary series with strong memory — consistent with ADF result
 
-**Installation**
+**auto_arima:**
+- Automatically searches ARIMA(p, d, q) combinations using AIC minimisation
+- `d` (differencing order) determined data-driven from stationarity tests
+- Selects the most parsimonious model that fits the autocorrelation structure
 
-Clone the project repository to your local machine.
+## Key Takeaways
 
-Navigate to the project directory and install the required Python packages:
+- **Stationarity is a prerequisite, not an assumption to skip:** ARIMA requires the series to be stationary (constant mean, constant variance). p=0.98 on the ADF test makes non-stationarity unmistakable — differencing is mandatory before fitting.
+- **Seasonal decomposition is diagnostic, not just visual:** Decomposing the series confirms that the upward drift is a trend, not cyclical behaviour — ruling out seasonal ARIMA (SARIMA) and simplifying the model selection space.
+- **auto_arima does the grid search that would otherwise be manual:** Choosing (p, d, q) by hand requires inspecting ACF and PACF plots and iterating. `auto_arima` automates this systematically using information criteria, following the same logic but faster.
+
+## Tech Stack
+
+`Python` · `statsmodels` · `pmdarima` · `pandas` · `Matplotlib` · `Seaborn`
+
+## Run It Locally
 
 ```bash
+git clone https://github.com/matthewkane-ml/ML_TimeSeries_MTK.git
+cd ML_TimeSeries_MTK
 pip install -r requirements.txt
+jupyter notebook src/TimeSeries.ipynb
 ```
 
-**Create a database (if necessary)**
+## What I'd Do Next
 
-Create a new database within the Postgres engine by customizing and executing the following command:
+- Evaluate forecast accuracy with held-out test data using **MAE** and **RMSE** — a 60-step visual forecast is compelling, but quantified error on unseen data is what makes it credible
+- Apply **log transformation** before differencing to stabilise the variance of the upward-trending series
+- Compare against a **Facebook Prophet** model — Prophet handles trend changepoints and holidays automatically and often outperforms ARIMA on business sales data with irregular patterns
 
-```bash
-$ psql -U postgres -c "DO \$\$ BEGIN 
-    CREATE USER my_user WITH PASSWORD 'my_password'; 
-    CREATE DATABASE my_database OWNER my_user; 
-END \$\$;"
-```
-Connect to the Postgres engine to use your database, manipulate tables, and data:
+---
 
-```bash
-$ psql -U my_user -d my_database
-```
-
-Once inside PSQL, you can create tables, run queries, insert, update, or delete data, and much more!
-
-**Environment Variables**
-
-Create a .env file in the root directory of the project to store your environment variables, such as your database connection string:
-
-```makefile
-DATABASE_URL="postgresql://<USER>:<PASSWORD>@<HOST>:<PORT>/<DB_NAME>"
-
-#example
-DATABASE_URL="postgresql://my_user:my_password@localhost:5432/my_database"
-```
-
-## Running the Application
-
-To run the application, execute the app.py script from the root directory of the project:
-
-```bash
-python src/app.py
-```
-
-## Adding Models
-
-To add SQLAlchemy model classes, create new Python script files within the models/ directory. These classes should be defined according to your database schema.
-
-Example model definition (`models/example_model.py`):
-
-```py
-from sqlalchemy.orm import declarative_base
-from sqlalchemy import String
-from sqlalchemy.orm import Mapped, mapped_column
-
-Base = declarative_base()
-
-class ExampleModel(Base):
-    __tablename__ = 'example_table'
-    id: Mapped[int] = mapped_column(primary_key=True)
-    username: Mapped[str] = mapped_column(unique=True)
-```
-
-## Working with Data
-
-You can place your raw datasets in the data/raw directory, intermediate datasets in data/interim, and processed datasets ready for analysis in data/processed.
-
-To process data, you can modify the app.py script to include your data processing steps, using pandas for data manipulation and analysis.
-
-## Contributors
-
-This project is maintained by [matthewkane-ml](https://github.com/matthewkane-ml).
+**Author:** Matthew Kane — [LinkedIn](https://www.linkedin.com/in/thomas-k-392094410/) · [GitHub portfolio](https://github.com/matthewkane-ml)
